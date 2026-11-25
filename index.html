@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Construye la Tabla Periódica</title>
+<style>
+:root {
+  --bg: #172033; --panel: #25334d; --tile: #344563;
+  --green: #65e6a5; --green-dark: #238b68; --red: #a83e4b;
+  --text: #f4f7fb; --muted: #b9c7dc; --gold: #ffcc66;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+button { font: inherit; cursor: pointer; }
+.screen { min-height: 100vh; padding: 24px 16px; }
+.hidden { display: none !important; }
+#menu {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+}
+.flask { font-size: 58px; margin-bottom: 4px; }
+h1 { margin: 8px 0; font-size: clamp(28px, 5vw, 42px); }
+.tagline { color: var(--green); font-size: 13px; font-weight: bold; letter-spacing: 1px; }
+.intro { color: var(--muted); line-height: 1.6; margin: 22px 0; }
+.primary, .danger {
+  border: 0; border-radius: 7px; color: white; font-weight: bold;
+  padding: 13px 22px; margin: 6px; transition: filter .15s, transform .15s;
+}
+.primary { background: var(--green-dark); }
+.danger { background: var(--red); }
+.primary:hover, .danger:hover { filter: brightness(1.15); transform: translateY(-1px); }
+#game { max-width: 1200px; margin: auto; }
+.game-title { text-align: center; font-size: clamp(21px, 3vw, 28px); margin: 5px 0 18px; }
+.info, .question {
+  background: var(--panel); border-radius: 10px; padding: 12px 16px; margin: 10px 0;
+}
+.info { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.stat { font-weight: bold; }
+#score { color: var(--green); } #round { color: var(--green); }
+#timer { color: var(--gold); margin-left: auto; }
+.question { text-align: center; min-height: 112px; }
+#instruction { font-size: 14px; font-weight: bold; }
+#element-prompt { color: var(--green); font-size: 21px; font-weight: bold; margin: 10px 0; }
+#message { min-height: 18px; font-size: 13px; font-weight: bold; }
+.table-wrap { overflow-x: auto; padding: 8px 0 4px; }
+.periodic-table {
+  display: grid; grid-template-columns: repeat(18, minmax(48px, 1fr));
+  gap: 4px; min-width: 960px; margin: auto;
+}
+.group-number { color: var(--muted); font-size: 11px; text-align: center; padding: 3px 0; }
+.element {
+  min-width: 0; min-height: 54px; padding: 4px 1px; border: 0; border-radius: 5px;
+  background: var(--tile); color: white; font-weight: bold; font-size: 12px;
+}
+.element:disabled { opacity: .95; cursor: default; }
+.element.correct { background: var(--green-dark); }
+.element:not(:disabled):hover { background: #50678c; }
+.series-label {
+  grid-column: 1 / span 2; align-self: center; color: var(--green);
+  font-size: 10px; font-weight: bold; text-align: right; padding-right: 4px;
+}
+.controls { display: flex; justify-content: center; flex-wrap: wrap; margin: 14px 0; }
+.note { color: var(--muted); text-align: center; font-size: 12px; margin-top: 8px; }
+@media (max-width: 600px) {
+  .screen { padding: 16px 9px; }
+  .info { gap: 9px; font-size: 13px; }
+  #timer { margin-left: 0; }
+  #element-prompt { font-size: 18px; }
+}
+</style>
+</head>
+<body>
+<section id="menu" class="screen">
+  <div class="flask">🧪</div>
+  <h1>TABLA PERIÓDICA</h1>
+  <div class="tagline">CONSTRUYE Y DESCUBRE LOS 118 ELEMENTOS</div>
+  <p class="intro">Pon a prueba tus conocimientos de química.<br>
+  Completa la tabla y consigue la mayor puntuación.</p>
+  <button class="primary" id="start-from-menu">INICIAR JUEGO</button>
+</section>
+
+<main id="game" class="screen hidden">
+  <h2 class="game-title">CONSTRUYE LA TABLA PERIÓDICA</h2>
+  <section class="info">
+    <span class="stat" id="score">Puntos: 0</span>
+    <span class="stat" id="hits">Aciertos: 0</span>
+    <span class="stat" id="round">Ronda: 1</span>
+    <span class="stat" id="timer">Tiempo: 10:00</span>
+  </section>
+  <section class="question">
+    <div id="instruction">Encuentra el elemento</div>
+    <div id="element-prompt">Presiona iniciar</div>
+    <div id="message" aria-live="polite"></div>
+  </section>
+  <div class="table-wrap">
+    <div id="periodic-table" class="periodic-table" aria-label="Tabla periódica interactiva"></div>
+  </div>
+  <div class="controls">
+    <button class="primary" id="start-button">COMENZAR JUEGO</button>
+    <button class="danger" id="menu-button">VOLVER AL MENÚ</button>
+  </div>
+  <p class="note">En pantallas pequeñas, desliza horizontalmente para ver toda la tabla.</p>
+</main>
+
+<script>
+"use strict";
+
+// Configuración del juego
+const TIEMPO_INICIAL = 600;
+const REDUCCION_TIEMPO = 30;
+const TIEMPO_MINIMO = 60;
+const PUNTOS_POR_ACIERTO = 10;
+const BONIFICACION_RONDA = 500;
+
+// Número atómico, nombre y símbolo de los 118 elementos.
+const datos = [
+["Hidrógeno","H"],["Helio","He"],["Litio","Li"],["Berilio","Be"],
+["Boro","B"],["Carbono","C"],["Nitrógeno","N"],["Oxígeno","O"],
+["Flúor","F"],["Neón","Ne"],["Sodio","Na"],["Magnesio","Mg"],
+["Aluminio","Al"],["Silicio","Si"],["Fósforo","P"],["Azufre","S"],
+["Cloro","Cl"],["Argón","Ar"],["Potasio","K"],["Calcio","Ca"],
+["Escandio","Sc"],["Titanio","Ti"],["Vanadio","V"],["Cromo","Cr"],
+["Manganeso","Mn"],["Hierro","Fe"],["Cobalto","Co"],["Níquel","Ni"],
+["Cobre","Cu"],["Zinc","Zn"],["Galio","Ga"],["Germanio","Ge"],
+["Arsénico","As"],["Selenio","Se"],["Bromo","Br"],["Kriptón","Kr"],
+["Rubidio","Rb"],["Estroncio","Sr"],["Itrio","Y"],["Circonio","Zr"],
+["Niobio","Nb"],["Molibdeno","Mo"],["Tecnecio","Tc"],["Rutenio","Ru"],
+["Rodio","Rh"],["Paladio","Pd"],["Plata","Ag"],["Cadmio","Cd"],
+["Indio","In"],["Estaño","Sn"],["Antimonio","Sb"],["Telurio","Te"],
+["Yodo","I"],["Xenón","Xe"],["Cesio","Cs"],["Bario","Ba"],
+["Lantano","La"],["Cerio","Ce"],["Praseodimio","Pr"],["Neodimio","Nd"],
+["Prometio","Pm"],["Samario","Sm"],["Europio","Eu"],["Gadolinio","Gd"],
+["Terbio","Tb"],["Disprosio","Dy"],["Holmio","Ho"],["Erbio","Er"],
+["Tulio","Tm"],["Iterbio","Yb"],["Lutecio","Lu"],["Hafnio","Hf"],
+["Tantalio","Ta"],["Wolframio","W"],["Renio","Re"],["Osmio","Os"],
+["Iridio","Ir"],["Platino","Pt"],["Oro","Au"],["Mercurio","Hg"],
+["Talio","Tl"],["Plomo","Pb"],["Bismuto","Bi"],["Polonio","Po"],
+["Astato","At"],["Radón","Rn"],["Francio","Fr"],["Radio","Ra"],
+["Actinio","Ac"],["Torio","Th"],["Protactinio","Pa"],["Uranio","U"],
+["Neptunio","Np"],["Plutonio","Pu"],["Americio","Am"],["Curio","Cm"],
+["Berkelio","Bk"],["Californio","Cf"],["Einstenio","Es"],["Fermio","Fm"],
+["Mendelevio","Md"],["Nobelio","No"],["Lawrencio","Lr"],["Rutherfordio","Rf"],
+["Dubnio","Db"],["Seaborgio","Sg"],["Bohrio","Bh"],["Hassio","Hs"],
+["Meitnerio","Mt"],["Darmstatio","Ds"],["Roentgenio","Rg"],["Copernicio","Cn"],
+["Nihonio","Nh"],["Flerovio","Fl"],["Moscovio","Mc"],["Livermorio","Lv"],
+["Teneso","Ts"],["Oganesón","Og"]
+];
+
+function obtenerPosicion(n) {
+  if (n === 1) return [1,1];
+  if (n === 2) return [1,18];
+  if (n >= 3 && n <= 10) return [2,n-2];
+  if (n >= 11 && n <= 18) return [3,n-10];
+  if (n >= 19 && n <= 36) return [4,n-18];
+  if (n >= 37 && n <= 54) return [5,n-36];
+  if (n >= 55 && n <= 56) return [6,n-54];
+  if (n >= 57 && n <= 71) return [8,n-54];
+  if (n >= 72 && n <= 86) return [6,n-68];
+  if (n >= 87 && n <= 88) return [7,n-86];
+  if (n >= 89 && n <= 103) return [9,n-86];
+  if (n >= 104 && n <= 118) return [7,n-100];
+  return [0,0];
+}
+
+const elementos = datos.map(([nombre, simbolo], i) => {
+  const numero = i + 1;
+  const [periodo, grupo] = obtenerPosicion(numero);
+  return { numero, nombre, simbolo, periodo, grupo };
+});
+
+const $ = id => document.getElementById(id);
+const menu = $("menu"), game = $("game"), table = $("periodic-table");
+const botones = new Map();
+let puntos = 0, aciertos = 0, ronda = 1, tiempo = TIEMPO_INICIAL;
+let pendientes = [], actual = null, juegoActivo = false;
+let timerId = null, nextId = null;
+
+function construirTabla() {
+  // Encabezados de grupos.
+  for (let grupo = 1; grupo <= 18; grupo++) {
+    const label = document.createElement("div");
+    label.className = "group-number";
+    label.style.gridRow = "1";
+    label.style.gridColumn = String(grupo);
+    label.textContent = grupo;
+    table.appendChild(label);
+  }
+
+  for (const e of elementos) {
+    const button = document.createElement("button");
+    button.className = "element";
+    button.textContent = "?";
+    button.disabled = true;
+    button.style.gridRow = String(e.periodo + 1);
+    button.style.gridColumn = String(e.grupo);
+    button.setAttribute("aria-label", `Posición del elemento ${e.numero}`);
+    button.addEventListener("click", () => comprobarRespuesta(e.numero));
+    table.appendChild(button);
+    botones.set(e.numero, button);
+  }
+
+  const lan = document.createElement("div");
+  lan.className = "series-label";
+  lan.style.gridRow = "9"; lan.textContent = "LANTÁNIDOS";
+  table.appendChild(lan);
+  const act = document.createElement("div");
+  act.className = "series-label";
+  act.style.gridRow = "10"; act.textContent = "ACTÍNIDOS";
+  table.appendChild(act);
+}
+
+function actualizarPanel() {
+  $("score").textContent = `Puntos: ${puntos}`;
+  $("hits").textContent = `Aciertos: ${aciertos}`;
+  $("round").textContent = `Ronda: ${ronda}`;
+  const min = Math.floor(tiempo / 60), sec = tiempo % 60;
+  $("timer").textContent = `Tiempo: ${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+}
+
+function mezclar(array) {
+  const copia = [...array];
+  for (let i = copia.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia;
+}
+
+function siguienteElemento() {
+  nextId = null;
+  if (!juegoActivo) return;
+
+  if (pendientes.length === 0) {
+    puntos += BONIFICACION_RONDA;
+    ronda++;
+    // Equivalente al arreglo del error de Python: aquí tiempo se actualiza
+    // directamente en el estado del juego.
+    tiempo = Math.max(TIEMPO_MINIMO, tiempo - REDUCCION_TIEMPO);
+    actualizarPanel();
+    alert(`¡FELICIDADES!\n\nDescubriste los 118 elementos.\n\nBonificación: +${BONIFICACION_RONDA} puntos\nPuntuación acumulada: ${puntos}\n\nComienza la ronda ${ronda}.`);
+    if (!juegoActivo) return;
+    pendientes = mezclar(elementos);
+    for (const button of botones.values()) {
+      button.textContent = "?";
+      button.classList.remove("correct");
+      button.disabled = false;
+    }
+  }
+
+  actual = pendientes.shift();
+  $("instruction").textContent = `Ronda ${ronda} | Número atómico: ${actual.numero}`;
+  $("element-prompt").textContent = `¿Dónde va ${actual.nombre} (${actual.simbolo})?`;
+  $("message").textContent = "Selecciona su posición correcta";
+  $("message").style.color = "white";
+}
+
+function comprobarRespuesta(numeroBoton) {
+  if (!juegoActivo || actual === null) return;
+  if (numeroBoton === actual.numero) {
+    puntos += PUNTOS_POR_ACIERTO;
+    aciertos++;
+    const button = botones.get(actual.numero);
+    button.textContent = actual.simbolo;
+    button.classList.add("correct");
+    button.disabled = true;
+    $("message").textContent = `¡Correcto! ${actual.nombre}`;
+    $("message").style.color = "var(--green)";
+    actual = null;
+    actualizarPanel();
+    nextId = setTimeout(siguienteElemento, 600);
+  } else {
+    $("message").textContent = "¡Incorrecto! Inténtalo nuevamente.";
+    $("message").style.color = "#ff7777";
+  }
+}
+
+function detenerTemporizadores() {
+  if (timerId !== null) { clearInterval(timerId); timerId = null; }
+  if (nextId !== null) { clearTimeout(nextId); nextId = null; }
+}
+
+function contarTiempo() {
+  timerId = setInterval(() => {
+    if (!juegoActivo) return;
+    if (tiempo > 0) {
+      tiempo--;
+      actualizarPanel();
+    } else {
+      finalizarJuego();
+    }
+  }, 1000);
+}
+
+function finalizarJuego() {
+  juegoActivo = false;
+  actual = null;
+  detenerTemporizadores();
+  for (const button of botones.values()) button.disabled = true;
+  const porcentaje = (aciertos / (ronda * 118)) * 100;
+  alert(`¡SE ACABÓ EL TIEMPO!\n\nPuntuación final: ${puntos}\nRespuestas correctas: ${aciertos}\nRondas iniciadas: ${ronda}\nPorcentaje de aciertos: ${porcentaje.toFixed(1)}%`);
+  $("start-button").disabled = false;
+  $("start-button").textContent = "VOLVER A JUGAR";
+}
+
+function comenzarJuego() {
+  detenerTemporizadores();
+  puntos = 0; aciertos = 0; ronda = 1; tiempo = TIEMPO_INICIAL;
+  actual = null;
+  pendientes = mezclar(elementos);
+  juegoActivo = true;
+  for (const button of botones.values()) {
+    button.textContent = "?";
+    button.classList.remove("correct");
+    button.disabled = false;
+  }
+  $("start-button").disabled = true;
+  $("start-button").textContent = "JUEGO EN CURSO";
+  $("message").textContent = "¡Buena suerte, científico!";
+  $("message").style.color = "var(--green)";
+  actualizarPanel();
+  siguienteElemento();
+  contarTiempo();
+}
+
+function volverMenu() {
+  juegoActivo = false;
+  actual = null;
+  detenerTemporizadores();
+  game.classList.add("hidden");
+  menu.classList.remove("hidden");
+  $("start-button").disabled = false;
+  $("start-button").textContent = "COMENZAR JUEGO";
+}
+
+$("start-from-menu").addEventListener("click", () => {
+  menu.classList.add("hidden");
+  game.classList.remove("hidden");
+  comenzarJuego();
+});
+$("start-button").addEventListener("click", comenzarJuego);
+$("menu-button").addEventListener("click", volverMenu);
+
+construirTabla();
+actualizarPanel();
+</script>
+</body>
+</html>
